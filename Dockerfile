@@ -5,6 +5,7 @@ FROM php:8.1.27-bullseye
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 COPY --from=php-ext-installer /usr/bin/install-php-extensions /usr/local/bin/
 ENV COMPOSER_HOME="/tmp/composer"
+ENV COMPOSER_MEMORY_LIMIT=-1
 RUN set -x \
     && install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl \
     # install xdebug (for testing with code coverage), but do not enable it
@@ -48,13 +49,13 @@ WORKDIR /app
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
 
 # install composer dependencies (autoloader MUST be generated later!)
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install -n --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
+RUN composer install -n --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist 2>&1
 
 # copy application sources into image (completely)
 COPY --chown=jikanapi:jikanapi . /app/
 
 RUN set -ex \
-    && COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload -n --optimize --no-ansi --no-dev  \
+    && composer dump-autoload -n --optimize --no-ansi --no-dev  \
     && cp .env.dist .env \
     && chmod -R 777 ${COMPOSER_HOME}/cache \
     && chmod -R a+w storage/ \
