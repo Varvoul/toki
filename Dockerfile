@@ -55,6 +55,7 @@ COPY --chown=jikanapi:jikanapi . /app/
 
 RUN set -ex \
     && COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload -n --optimize --no-ansi --no-dev  \
+    && cp .env.dist .env \
     && chmod -R 777 ${COMPOSER_HOME}/cache \
     && chmod -R a+w storage/ \
     && chown -R jikanapi:jikanapi /app \
