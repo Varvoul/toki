@@ -1,36 +1,56 @@
 FROM php:8.1.27-bullseye
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl git unzip wget 2>&1 | tail -5
-
-# Test 1: Can we download from GitHub?
-RUN wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" -O /usr/bin/supercronic \
-    && chmod +x /usr/bin/supercronic \
-    && echo "TEST1_PASS: GitHub download works" > /tmp/test_results.txt || echo "TEST1_FAIL" > /tmp/test_results.txt
-
-# Test 2: install-php-extensions tool
-COPY --from=mlocati/php-extension-installer:2.1.77 /usr/bin/install-php-extensions /usr/local/bin/
-RUN install-php-extensions intl mbstring 2>&1 | tail -3 && echo "TEST2_PASS: Basic PHP extensions work" >> /tmp/test_results.txt
-
-# Test 3: MongoDB extension
-RUN install-php-extensions mongodb-stable 2>&1 | tail -5 && echo "TEST3_PASS: MongoDB extension works" >> /tmp/test_results.txt
-
-# Test 4: Redis extension  
-RUN install-php-extensions redis 2>&1 | tail -3 && echo "TEST4_PASS: Redis extension works" >> /tmp/test_results.txt
-
-# Test 5: Composer
+# Copy tools from official images
 COPY --from=composer:2.6.6 /usr/bin/composer /usr/bin/composer
+COPY --from=mlocati/php-extension-installer:2.1.77 /usr/bin/install-php-extensions /usr/local/bin/
+COPY --from=spiralscout/roadrunner:2.12.3 /usr/bin/rr /usr/bin/rr
+
 ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
-COPY ./composer.json ./composer.lock /app/
-WORKDIR /app
-RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist 2>&1 | tail -20 \
-    && echo "TEST5_PASS: Composer install works" >> /tmp/test_results.txt \
-    || echo "TEST5_FAIL: Composer install failed" >> /tmp/test_results.txt
+# Install PHP extensions
+RUN install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl
 
-# Serve the test results
-RUN echo '<?php echo file_get_contents("/tmp/test_results.txt"); ?>' > /app/index.php \
-    && echo '<?php header("Content-Type: text/plain"); readfile("/tmp/test_results.txt"); ?>' > /app/public/index.php 2>/dev/null; true
+# Install system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openssl git wget unzip curl \
+    && wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" \
+       -O /usr/bin/supercronic \
+    && chmod +x /usr/bin/supercronic \
+    && mkdir -p /etc/supercronic \
+    && echo '*/1 * * * * php /app/artisan schedule:run' > /etc/supercronic/laravel \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> \
+        ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini
+
+# Create user and directories
+RUN adduser --disabled-password --shell "/sbin/nologin" --home "/nonexistent" --no-create-home --uid "10001" --gecos "" "jikanapi" \
+    && mkdir -p /app /var/run/rr \
+    && chown -R jikanapi:jikanapi /app /var/run/rr /etc/supercronic/laravel \
+    && chmod -R 777 /var/run/rr
+
+USER jikanapi:jikanapi
+WORKDIR /app
+
+# Install composer dependencies (autoloader generated later)
+COPY --chown=jikanapi:jikanapi ./composer.* /app/
+RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
+
+# Copy application sources
+COPY --chown=jikanapi:jikanapi . /app/
+
+RUN composer dump-autoload --optimize --no-ansi --no-dev \
+    && cp .env.dist .env \
+    && chmod -R 777 ${COMPOSER_HOME}/cache \
+    && chmod -R a+w storage/ \
+    && chown -R jikanapi:jikanapi /app \
+    && chmod +x docker-entrypoint.php docker-entrypoint.sh
+
+LABEL org.opencontainers.image.source=https://github.com/Varvoul/toki
 
 EXPOSE 8080
-CMD php -S 0.0.0.0:8080 /app/index.php
+EXPOSE 2114
+
+HEALTHCHECK CMD curl --fail http://localhost:2114/health?plugin=http || exit 1
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
