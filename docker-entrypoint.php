@@ -1,6 +1,11 @@
 #!/usr/bin/env php
 <?php
 
+// Add error logging at the top
+error_reporting(E_ALL);
+ini_set('display_errors', 'stderr');
+ini_set('error_log', '/app/php_err.log');
+
 use Dotenv\Dotenv;
 
 require_once __DIR__.'/vendor/autoload.php';
