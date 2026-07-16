@@ -8,8 +8,11 @@ COPY --from=spiralscout/roadrunner:2.12.3 /usr/bin/rr /usr/bin/rr
 ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
-# Install PHP extensions
-RUN install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl
+# Install PHP extensions one at a time (avoids memory issues on build servers)
+RUN install-php-extensions intl mbstring
+RUN install-php-extensions mongodb-stable
+RUN install-php-extensions redis
+RUN install-php-extensions opcache sockets pcntl
 
 # Install system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
