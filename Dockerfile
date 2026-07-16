@@ -23,4 +23,4 @@ RUN set -ex \
 USER jikanapi:jikanapi
 WORKDIR /app
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
-RUN composer install -n --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist && echo "COMPOSER INSTALL OK"
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install -n --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist 2>&1 && echo "COMPOSER OK"
