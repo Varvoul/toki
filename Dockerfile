@@ -7,21 +7,28 @@ COPY --from=php-ext-installer /usr/bin/install-php-extensions /usr/local/bin/
 ENV COMPOSER_HOME="/tmp/composer"
 RUN set -x \
     && install-php-extensions intl mbstring mongodb-stable opcache sockets pcntl \
+    && IPE_DONT_ENABLE=1 install-php-extensions xdebug-3.2.0 \
     && apt-get update && apt-get install -y --no-install-recommends \
         openssl \
         git \
         wget \
-        curl \
         unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> \
+        curl \
+  && wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" \
+     -O /usr/bin/supercronic \
+  && chmod +x /usr/bin/supercronic \
+  && mkdir /etc/supercronic \
+  && echo '*/1 * * * * php /app/artisan schedule:run' > /etc/supercronic/laravel \
+  && rm -rf /var/lib/apt/lists/* \
+  && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> \
             ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini \
-    && php -v \
+  && php -v \
     && php -m \
-    && composer --version \
+  && composer --version \
     && adduser --disabled-password --shell "/sbin/nologin" --home "/nonexistent" --no-create-home --uid "10001" --gecos "" "jikanapi" \
     && mkdir /app /var/run/rr \
-    && chown -R jikanapi:jikanapi /app /var/run/rr
+    && chown -R jikanapi:jikanapi /app /var/run/rr /etc/supercronic/laravel \
+    && chmod -R 777 /var/run/rr
 
 USER jikanapi:jikanapi
 
@@ -34,17 +41,16 @@ RUN composer install -n --no-dev --no-cache --no-ansi --no-autoloader --no-scrip
 COPY --chown=jikanapi:jikanapi . /app/
 
 RUN set -ex \
-    && composer dump-autoload -n --optimize --no-ansi --no-dev \
+    && composer dump-autoload -n --optimize --no-ansi --no-dev  \
     && chmod -R 777 ${COMPOSER_HOME}/cache \
     && chmod -R a+w storage/ \
     && chown -R jikanapi:jikanapi /app \
     && chmod +x docker-entrypoint.php \
-    && chmod +x render-entrypoint.sh
+    && chmod +x docker-entrypoint.sh
 
 EXPOSE 8080
 EXPOSE 2114
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl --fail http://localhost:2114/health?plugin=http || exit 1
+HEALTHCHECK CMD wget --spider -q "http://127.0.0.1:2114/health?plugin=http" || exit 1
 
-ENTRYPOINT ["/app/render-entrypoint.sh"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
