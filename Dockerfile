@@ -9,8 +9,6 @@ COPY --from=spiralscout/roadrunner:2.12.3 /usr/bin/rr /usr/bin/rr
 ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
-RUN echo "STEP1_COPY_TOOLS:PASS" > /app/build.log
-
 RUN (install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl 2>&1 | tail -5 && echo "STEP2_PHP_EXTS:PASS" >> /app/build.log) || echo "STEP2_PHP_EXTS:FAIL" >> /app/build.log
 
 RUN (apt-get update > /dev/null 2>&1 && apt-get install -y --no-install-recommends openssl git wget unzip curl > /dev/null 2>&1 \
