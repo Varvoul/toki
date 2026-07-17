@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: toki-v4
+    env: docker
+    repo: https://github.com/Varvoul/toki
+    branch: master
+    plan: starter
+    region: oregon
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "8080"
