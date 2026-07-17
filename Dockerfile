@@ -9,22 +9,23 @@ COPY --from=php-ext-installer /usr/bin/install-php-extensions /usr/local/bin/
 ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
-# Install PHP extensions - mongodb must be 1.x for composer.lock compatibility
-RUN install-php-extensions intl mbstring redis opcache sockets pcntl 2>&1 \
-    && pecl install mongodb-1.15.0 2>&1 \
-    && docker-php-ext-enable mongodb 2>&1
-
-COPY --from=roadrunner /usr/bin/rr /usr/bin/rr
-
-LABEL org.opencontainers.image.source=https://github.com/Varvoul/toki
-
-RUN apt-get update && apt-get install -y --no-install-recommends openssl git wget unzip \
+# Install system deps (libssl-dev for mongodb SSL, rest for runtime)
+RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev openssl git wget unzip \
     && wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" -O /usr/bin/supercronic \
     && chmod +x /usr/bin/supercronic \
     && mkdir /etc/supercronic \
     && echo '*/1 * * * * php /app/artisan schedule:run' > /etc/supercronic/laravel \
     && rm -rf /var/lib/apt/lists/* \
     && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini
+
+# Install PHP extensions - mongodb 1.15.0 for composer.lock compatibility (needs ext-mongodb ^1.13.0)
+RUN install-php-extensions intl mbstring redis opcache sockets pcntl \
+    && pecl install mongodb-1.15.0 \
+    && docker-php-ext-enable mongodb
+
+COPY --from=roadrunner /usr/bin/rr /usr/bin/rr
+
+LABEL org.opencontainers.image.source=https://github.com/Varvoul/toki
 
 RUN adduser --disabled-password --shell "/sbin/nologin" --home "/nonexistent" --no-create-home --uid "10001" --gecos "" "jikanapi" \
     && mkdir /app /var/run/rr \
@@ -36,11 +37,11 @@ WORKDIR /app
 
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
 
-RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist 2>&1
+RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
 
 COPY --chown=jikanapi:jikanapi . /app/
 
-RUN composer dump-autoload --optimize --no-ansi --no-dev 2>&1 \
+RUN composer dump-autoload --optimize --no-ansi --no-dev \
     && chmod -R 777 ${COMPOSER_HOME}/cache \
     && chmod -R a+w storage/ \
     && chown -R jikanapi:jikanapi /app \
