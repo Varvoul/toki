@@ -10,7 +10,7 @@ ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
 # Install system deps (libssl-dev for mongodb SSL, rest for runtime)
-RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev openssl git wget unzip \
+RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev ca-certificates openssl git wget unzip \
     && wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" -O /usr/bin/supercronic \
     && chmod +x /usr/bin/supercronic \
     && mkdir /etc/supercronic \
@@ -18,10 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev open
     && rm -rf /var/lib/apt/lists/* \
     && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini
 
-# Install PHP extensions - mongodb 1.15.0 for composer.lock compatibility (needs ext-mongodb ^1.13.0)
-RUN install-php-extensions intl mbstring redis opcache sockets pcntl \
-    && pecl install mongodb-1.15.0 \
-    && docker-php-ext-enable mongodb
+# Install PHP extensions (mongodb-stable = 2.x with proper TLS support for Atlas)
+RUN install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl
 
 COPY --from=roadrunner /usr/bin/rr /usr/bin/rr
 
@@ -37,7 +35,9 @@ WORKDIR /app
 
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
 
-RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
+# Update mongodb packages to support ext-mongodb 2.x, then install all deps
+RUN composer update mongodb/mongodb jenssegers/mongodb --no-dev --no-cache --no-scripts --prefer-dist --with-all-dependencies \
+    && composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
 
 COPY --chown=jikanapi:jikanapi . /app/
 
