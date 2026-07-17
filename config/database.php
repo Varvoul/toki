@@ -31,10 +31,6 @@ return [
                 'serverSelectionTimeoutMS' => 30000,
                 'retryWrites' => true,
                 'w' => 'majority',
-                // TLS configuration for Atlas
-                'tls' => true,
-                'tlsCAFile' => '/etc/ssl/certs/ca-certificates.crt',
-                'tlsAllowInvalidHostnames' => false,
             ]
         ]
     ],
