@@ -1,32 +1,12 @@
 #!/usr/bin/env php
 <?php
 
-// If vendor/autoload.php is missing, this is a broken build - show error and serve it
-if (!file_exists(__DIR__ . '/vendor/autoload.php')) {
-    $msg = "FATAL: vendor/autoload.php not found. Composer install likely failed during build. ";
-    $msg .= "Dockerfile must ensure composer install succeeds (remove || true from that step).\n\n";
-    $msg .= "Build troubleshooting: The || true pattern hid the real failure. ";
-    $msg .= "Fix: Remove || true from the composer install RUN step in Dockerfile.";
-    file_put_contents(__DIR__ . '/BUILD_ERROR.txt', $msg);
-    // Write a simple index.php that shows the error
-    file_put_contents(__DIR__ . '/public/index.php',
-        '<?php header("Content-Type: text/plain"); echo file_get_contents(__DIR__ . "/BUILD_ERROR.txt"); ?>');
-    // Start simple PHP server on port 8080
-    pcntl_exec('/usr/bin/php', ['-S', '0.0.0.0:8080', '-t', __DIR__ . '/public']);
-    // Wait briefly then exit
-    sleep(2);
-    exit(1);
-}
-
-error_reporting(E_ALL);
-ini_set('display_errors', 'stderr');
-ini_set('error_log', '/app/php_err.log');
-
 use Dotenv\Dotenv;
 
 require_once __DIR__.'/vendor/autoload.php';
 
 $safe_defaults = [
+    // mongodb regex search by default
     "SCOUT_DRIVER" => "none",
     "SCOUT_QUEUE" => false,
     "THROTTLE" => false,
@@ -90,9 +70,9 @@ if ($current_env["SCOUT_DRIVER"] === "typesense" && empty($current_env["TYPESENS
 }
 
 $rrConfig = \Symfony\Component\Yaml\Yaml::parse(file_get_contents(".rr.yaml"));
-$rrConfig["http"]["pool"]["supervisor"]["max_worker_memory"] = (int) env("RR_MAX_WORKER_MEMORY", 128);
+$rrConfig["http"]["pool"]["supervisor"]["max_worker_memory"] = (int) env("RR_MAX_WORKER_MEMORY", 80);
 $rrConfig["http"]["max_request_size"] = (int) env("RR_MAX_REQUEST_SIZE_MB", 256);
-$rrConfig["service"]["laravel_queue_worker_1"]["process_num"] = (int) env("JIKAN_QUEUE_WORKER_PROCESS_NUM", 1);
+$rrConfig["service"]["laravel_queue_worker_1"]["process_num"] = (int) env("JIKAN_QUEUE_WORKER_PROCESS_NUM", 0);
 $periodical_full_indexer_key = "JIKAN_ENABLE_PERIODICAL_FULL_INDEXER";
 if (array_key_exists($periodical_full_indexer_key, $current_env) && in_array($current_env[$periodical_full_indexer_key], [1, '1', 'true', 'True', 'TRUE'])) {
     $supercronic_schedule = file_get_contents("/etc/supercronic/laravel");
