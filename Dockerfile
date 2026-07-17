@@ -35,9 +35,9 @@ WORKDIR /app
 
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
 
-# Update mongodb packages to support ext-mongodb 2.x, then install all deps
-RUN composer update mongodb/mongodb jenssegers/mongodb --no-dev --no-cache --no-scripts --prefer-dist --with-all-dependencies \
-    && composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
+# --ignore-platform-reqs: ext-mongodb 2.x is installed but lock file needs ^1.13.0
+# The mongodb/mongodb 1.12.0 code is compatible with ext-mongodb 2.x at runtime
+RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist --ignore-platform-reqs
 
 COPY --chown=jikanapi:jikanapi . /app/
 
