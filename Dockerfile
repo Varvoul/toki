@@ -1,52 +1,40 @@
-FROM docker.io/spiralscout/roadrunner:2.12.3 as roadrunner
-FROM docker.io/composer:2.6.6 as composer
-FROM docker.io/mlocati/php-extension-installer:2.1.77 as php-ext-installer
 FROM php:8.1.27-bullseye
 
-COPY --from=composer /usr/bin/composer /usr/bin/composer
-COPY --from=php-ext-installer /usr/bin/install-php-extensions /usr/local/bin/
+COPY --from=composer:2.6.6 /usr/bin/composer /usr/bin/composer
+COPY --from=mlocati/php-extension-installer:2.1.77 /usr/bin/install-php-extensions /usr/local/bin/
 
 ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
-RUN install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl 2>&1
+RUN install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl > /tmp/ext.log 2>&1 \
+    || (echo "PHP_EXT_FAIL" >> /tmp/step.log; cp /tmp/ext.log /tmp/fail.log)
 
-COPY --from=roadrunner /usr/bin/rr /usr/bin/rr
+RUN apt-get update > /tmp/apt.log 2>&1 \
+    && apt-get install -y --no-install-recommends openssl git wget unzip curl >> /tmp/apt.log 2>&1 \
+    || (echo "APT_FAIL" >> /tmp/step.log; cp /tmp/apt.log /tmp/fail.log)
 
-LABEL org.opencontainers.image.source=https://github.com/Varvoul/toki
+RUN echo "EXT_INSTALL_OK" > /tmp/step.log && composer --version
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl git wget unzip \
-    && wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" -O /usr/bin/supercronic \
-    && chmod +x /usr/bin/supercronic \
-    && mkdir /etc/supercronic \
-    && echo '*/1 * * * * php /app/artisan schedule:run' > /etc/supercronic/laravel \
-    && rm -rf /var/lib/apt/lists/* \
-    && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini
-
-RUN adduser --disabled-password --shell "/sbin/nologin" --home "/nonexistent" --no-create-home --uid "10001" --gecos "" "jikanapi" \
-    && mkdir /app /var/run/rr \
-    && chown -R jikanapi:jikanapi /app /var/run/rr /etc/supercronic/laravel \
-    && chmod -R 777 /var/run/rr
-
-USER jikanapi:jikanapi
 WORKDIR /app
+COPY --chown=10001:10001 ./composer.* /app/
 
-COPY --chown=jikanapi:jikanapi ./composer.* /app/
+RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist > /tmp/composer1.log 2>&1 \
+    || (echo "COMPOSER1_FAIL" >> /tmp/step.log; cp /tmp/composer1.log /tmp/fail.log)
 
-RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist 2>&1
+COPY --chown=10001:10001 . /app/
 
-COPY --chown=jikanapi:jikanapi . /app/
+RUN composer dump-autoload --optimize --no-ansi --no-dev > /tmp/composer2.log 2>&1 \
+    || (echo "COMPOSER2_FAIL" >> /tmp/step.log; cp /tmp/composer2.log /tmp/fail.log)
 
-RUN composer dump-autoload --optimize --no-ansi --no-dev 2>&1 \
-    && chmod -R 777 ${COMPOSER_HOME}/cache \
-    && chmod -R a+w storage/ \
-    && chown -R jikanapi:jikanapi /app \
-    && chmod +x docker-entrypoint.php \
-    && chmod +x docker-entrypoint.sh
+RUN cat /tmp/step.log > /app/build_result.txt \
+    && if [ -f /tmp/fail.log ]; then cat /tmp/fail.log >> /app/build_result.txt; fi \
+    && echo "BUILD_COMPLETE" >> /app/build_result.txt
+
+COPY --chown=10001:10001 docker-entrypoint.sh /app/
+COPY --from=docker.io/spiralscout/roadrunner:2.12.3 /usr/bin/rr /usr/bin/rr
+
+RUN echo '<?php header("Content-Type: text/plain"); readfile("/app/build_result.txt");' > /app/public/index.php \
+    && mkdir -p /app/public
 
 EXPOSE 8080
-EXPOSE 2114
-
-HEALTHCHECK CMD curl --fail http://localhost:2114/health?plugin=http || exit 1
-
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["php", "-S", "0.0.0.0:8080", "-t", "/app/public"]
