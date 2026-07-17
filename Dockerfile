@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev ca-c
     && echo '*/1 * * * * php /app/artisan schedule:run' > /etc/supercronic/laravel \
     && rm -rf /var/lib/apt/lists/* \
     && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini \
-    && install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl
+    && install-php-extensions intl mbstring mongodb-1.15.0 redis opcache sockets pcntl
 
 COPY --from=roadrunner /usr/bin/rr /usr/bin/rr
 
@@ -33,8 +33,8 @@ WORKDIR /app
 
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
 
-# --ignore-platform-reqs: ext-mongodb 2.x is installed but lock file needs ^1.13.0
-RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist --ignore-platform-reqs
+# ext-mongodb 1.15.0 matches composer.lock requirement ^1.13.0
+RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist
 
 COPY --chown=jikanapi:jikanapi . /app/
 
