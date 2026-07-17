@@ -1,7 +1,7 @@
 FROM docker.io/spiralscout/roadrunner:2.12.3 as roadrunner
 FROM docker.io/composer:2.6.6 as composer
 FROM docker.io/mlocati/php-extension-installer:2.1.77 as php-ext-installer
-FROM php:8.1.27-bullseye
+FROM php:8.1-bookworm
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 COPY --from=php-ext-installer /usr/bin/install-php-extensions /usr/local/bin/
@@ -9,17 +9,15 @@ COPY --from=php-ext-installer /usr/bin/install-php-extensions /usr/local/bin/
 ENV COMPOSER_HOME="/tmp/composer"
 ENV COMPOSER_MEMORY_LIMIT=-1
 
-# Install system deps (libssl-dev for mongodb SSL, rest for runtime)
+# Install system deps + PHP extensions in one layer (bookworm has OpenSSL 3.0)
 RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev ca-certificates openssl git wget unzip \
     && wget -q "https://github.com/aptible/supercronic/releases/download/v0.1.12/supercronic-linux-$(dpkg --print-architecture)" -O /usr/bin/supercronic \
     && chmod +x /usr/bin/supercronic \
     && mkdir /etc/supercronic \
     && echo '*/1 * * * * php /app/artisan schedule:run' > /etc/supercronic/laravel \
     && rm -rf /var/lib/apt/lists/* \
-    && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini
-
-# Install PHP extensions (mongodb-stable = 2.x with proper TLS support for Atlas)
-RUN install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl
+    && echo -e "\nopcache.enable=1\nopcache.enable_cli=1\nopcache.jit_buffer_size=32M\nopcache.jit=1235\n" >> ${PHP_INI_DIR}/conf.d/docker-php-ext-opcache.ini \
+    && install-php-extensions intl mbstring mongodb-stable redis opcache sockets pcntl
 
 COPY --from=roadrunner /usr/bin/rr /usr/bin/rr
 
@@ -36,7 +34,6 @@ WORKDIR /app
 COPY --chown=jikanapi:jikanapi ./composer.* /app/
 
 # --ignore-platform-reqs: ext-mongodb 2.x is installed but lock file needs ^1.13.0
-# The mongodb/mongodb 1.12.0 code is compatible with ext-mongodb 2.x at runtime
 RUN composer install --no-dev --no-cache --no-ansi --no-autoloader --no-scripts --prefer-dist --ignore-platform-reqs
 
 COPY --chown=jikanapi:jikanapi . /app/
